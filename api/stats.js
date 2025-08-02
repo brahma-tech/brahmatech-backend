@@ -1,12 +1,16 @@
 const admin = require("firebase-admin");
 
-// Init Firebase Admin once
+// Initialize Firebase Admin only once
 if (!admin.apps.length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    })
   });
 }
+
 const db = admin.firestore();
 
 // Helper: send JSON
@@ -22,7 +26,8 @@ module.exports = async (req, res) => {
 
     // 1️⃣ User stats
     if (action === "user-stats") {
-      if (!guildId || !userId) return send(res, 400, { error: "Missing guildId or userId" });
+      if (!guildId || !userId)
+        return send(res, 400, { error: "Missing guildId or userId" });
 
       const docSnap = await db.collection("users").doc(`${guildId}_${userId}`).get();
       if (!docSnap.exists) return send(res, 404, { error: "User not found" });
@@ -41,7 +46,8 @@ module.exports = async (req, res) => {
 
     // 2️⃣ Leaderboard
     if (action === "leaderboard") {
-      if (!guildId || !type) return send(res, 400, { error: "Missing guildId or type" });
+      if (!guildId || !type)
+        return send(res, 400, { error: "Missing guildId or type" });
 
       const snap = await db.collection("users").where("guildId", "==", guildId).get();
       let leaderboard = [];
@@ -66,7 +72,8 @@ module.exports = async (req, res) => {
 
     // 3️⃣ User history
     if (action === "user-history") {
-      if (!guildId || !userId) return send(res, 400, { error: "Missing guildId or userId" });
+      if (!guildId || !userId)
+        return send(res, 400, { error: "Missing guildId or userId" });
 
       const vcDoc = await db.collection("vc_stats").doc(`${guildId}_${userId}`).get();
       if (!vcDoc.exists) return send(res, 200, { xpHistory: {}, vcHistory: {} });
@@ -78,7 +85,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Default: show API guide
+    // Default: API usage help
     send(res, 200, {
       message: "BrahmaTech Stats API",
       usage: [
