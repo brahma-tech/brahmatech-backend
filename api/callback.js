@@ -7,7 +7,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Ensure required environment variables exist
+    // Check env vars
     if (
       !process.env.CLIENT_ID ||
       !process.env.CLIENT_SECRET ||
@@ -15,11 +15,6 @@ module.exports = async (req, res) => {
       !process.env.BOT_TOKEN
     ) {
       return res.status(500).json({ error: "Missing environment variables" });
-    }
-
-    // Make sure redirect URI is absolute
-    if (!/^https?:\/\//i.test(process.env.REDIRECT_URI)) {
-      return res.status(500).json({ error: "REDIRECT_URI must be an absolute URL" });
     }
 
     // 1️⃣ Exchange code for access token
@@ -43,7 +38,17 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "Failed to exchange code", details: tokenData });
     }
 
-    // 2️⃣ Get user guilds
+    // 2️⃣ Get user info
+    const userRes = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `${tokenData.token_type} ${tokenData.access_token}` },
+    });
+    const userInfo = await userRes.json();
+    if (!userRes.ok || !userInfo.id) {
+      console.error("Failed to fetch user info:", userInfo);
+      return res.status(400).json({ error: "Failed to fetch user info" });
+    }
+
+    // 3️⃣ Get user guilds
     const userGuildsRes = await fetch("https://discord.com/api/users/@me/guilds", {
       headers: { Authorization: `${tokenData.token_type} ${tokenData.access_token}` },
     });
@@ -53,7 +58,7 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "Failed to fetch user guilds" });
     }
 
-    // 3️⃣ Get bot guilds
+    // 4️⃣ Get bot guilds
     const botGuildsRes = await fetch("https://discord.com/api/users/@me/guilds", {
       headers: { Authorization: `Bot ${process.env.BOT_TOKEN}` },
     });
@@ -63,14 +68,21 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "Failed to fetch bot guilds" });
     }
 
-    // 4️⃣ Find mutual servers
+    // 5️⃣ Find mutual servers
     const mutualServers = userGuilds.filter(userGuild =>
       botGuilds.some(botGuild => botGuild.id === userGuild.id)
     );
 
-    // 5️⃣ Encode and redirect to GitHub Pages
-    const encodedData = Buffer.from(JSON.stringify(mutualServers)).toString("base64");
-    const redirectUrl = `https://brahma-tech.github.io/servers.html?data=${encodeURIComponent(encodedData)}`;
+    // 6️⃣ Send everything to dashboard
+    const payload = {
+      token: tokenData.access_token,
+      tokenType: tokenData.token_type,
+      user: userInfo,
+      servers: mutualServers
+    };
+
+    const encodedData = Buffer.from(JSON.stringify(payload)).toString("base64");
+    const redirectUrl = `https://brahma-tech.github.io/dashboard.html?data=${encodeURIComponent(encodedData)}`;
 
     res.writeHead(302, { Location: redirectUrl });
     res.end();
