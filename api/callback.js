@@ -33,9 +33,10 @@ module.exports = async (req, res) => {
     });
     const userGuilds = await userGuildsRes.json();
 
-    // 3️⃣ Get bot guilds
-    const botGuildsRes = await fetch("https://discord.com/api/users/@me/guilds", {
-      headers: { Authorization: `Bot ${process.env.BOT_TOKEN}` },
+    // 3️⃣ Get bot guilds from Discord Gateway (NOT /users/@me/guilds)
+    // This requires your bot backend to have an endpoint that returns guild list
+    const botGuildsRes = await fetch(`${process.env.BOT_API_URL}/api/bot-guilds`, {
+      headers: { Authorization: `Bearer ${process.env.API_SECRET}` } // optional security
     });
     const botGuilds = await botGuildsRes.json();
 
@@ -44,15 +45,23 @@ module.exports = async (req, res) => {
       botGuilds.some(botGuild => botGuild.id === userGuild.id)
     );
 
-    // 5️⃣ Encode and redirect to GitHub Pages
-    const encodedData = Buffer.from(JSON.stringify(mutualServers)).toString("base64");
+    // 5️⃣ Send data + token to GitHub Pages
+    // We'll keep the access_token so the front-end can make further API calls
+    const payload = {
+      mutualServers,
+      access_token: tokenData.access_token,
+      token_type: tokenData.token_type
+    };
+
+    const encodedData = Buffer.from(JSON.stringify(payload)).toString("base64");
+
     res.writeHead(302, {
       Location: `https://brahma-tech.github.io/servers.html?data=${encodedData}`
     });
     res.end();
 
   } catch (error) {
-    console.error(error);
+    console.error("OAuth Callback Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
