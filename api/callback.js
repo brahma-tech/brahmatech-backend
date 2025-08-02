@@ -1,4 +1,3 @@
-// api/callback.js
 const fetch = require("node-fetch");
 
 module.exports = async (req, res) => {
@@ -8,23 +7,40 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // Ensure required environment variables exist
+    if (
+      !process.env.CLIENT_ID ||
+      !process.env.CLIENT_SECRET ||
+      !process.env.REDIRECT_URI ||
+      !process.env.BOT_TOKEN
+    ) {
+      return res.status(500).json({ error: "Missing environment variables" });
+    }
+
+    // Make sure redirect URI is absolute
+    if (!/^https?:\/\//i.test(process.env.REDIRECT_URI)) {
+      return res.status(500).json({ error: "REDIRECT_URI must be an absolute URL" });
+    }
+
     // 1️⃣ Exchange code for access token
-    const params = new URLSearchParams();
-    params.append("client_id", process.env.CLIENT_ID);
-    params.append("client_secret", process.env.CLIENT_SECRET);
-    params.append("grant_type", "authorization_code");
-    params.append("code", code);
-    params.append("redirect_uri", process.env.REDIRECT_URI);
+    const params = new URLSearchParams({
+      client_id: process.env.CLIENT_ID,
+      client_secret: process.env.CLIENT_SECRET,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: process.env.REDIRECT_URI,
+    });
 
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
       body: params,
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
-    const tokenData = await tokenRes.json();
 
-    if (tokenData.error) {
-      return res.status(400).json(tokenData);
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || tokenData.error) {
+      console.error("Token exchange failed:", tokenData);
+      return res.status(400).json({ error: "Failed to exchange code", details: tokenData });
     }
 
     // 2️⃣ Get user guilds
@@ -32,36 +48,35 @@ module.exports = async (req, res) => {
       headers: { Authorization: `${tokenData.token_type} ${tokenData.access_token}` },
     });
     const userGuilds = await userGuildsRes.json();
+    if (!userGuildsRes.ok) {
+      console.error("Failed to fetch user guilds:", userGuilds);
+      return res.status(400).json({ error: "Failed to fetch user guilds" });
+    }
 
-    // 3️⃣ Get bot guilds from Discord Gateway (NOT /users/@me/guilds)
-    // This requires your bot backend to have an endpoint that returns guild list
-    const botGuildsRes = await fetch(`${process.env.BOT_API_URL}/api/bot-guilds`, {
-      headers: { Authorization: `Bearer ${process.env.API_SECRET}` } // optional security
+    // 3️⃣ Get bot guilds
+    const botGuildsRes = await fetch("https://discord.com/api/users/@me/guilds", {
+      headers: { Authorization: `Bot ${process.env.BOT_TOKEN}` },
     });
     const botGuilds = await botGuildsRes.json();
+    if (!botGuildsRes.ok) {
+      console.error("Failed to fetch bot guilds:", botGuilds);
+      return res.status(400).json({ error: "Failed to fetch bot guilds" });
+    }
 
     // 4️⃣ Find mutual servers
     const mutualServers = userGuilds.filter(userGuild =>
       botGuilds.some(botGuild => botGuild.id === userGuild.id)
     );
 
-    // 5️⃣ Send data + token to GitHub Pages
-    // We'll keep the access_token so the front-end can make further API calls
-    const payload = {
-      mutualServers,
-      access_token: tokenData.access_token,
-      token_type: tokenData.token_type
-    };
+    // 5️⃣ Encode and redirect to GitHub Pages
+    const encodedData = Buffer.from(JSON.stringify(mutualServers)).toString("base64");
+    const redirectUrl = `https://brahma-tech.github.io/servers.html?data=${encodeURIComponent(encodedData)}`;
 
-    const encodedData = Buffer.from(JSON.stringify(payload)).toString("base64");
-
-    res.writeHead(302, {
-      Location: `https://brahma-tech.github.io/servers.html?data=${encodedData}`
-    });
+    res.writeHead(302, { Location: redirectUrl });
     res.end();
 
   } catch (error) {
-    console.error("OAuth Callback Error:", error);
+    console.error("Callback Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
