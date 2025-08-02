@@ -19,14 +19,27 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// Helper: send JSON
+// Helper: send JSON with CORS headers
 function send(res, status, data) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Access-Control-Allow-Origin", "https://brahma-tech.github.io"); // allow GitHub Pages
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.end(JSON.stringify(data));
 }
 
 module.exports = async (req, res) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "https://brahma-tech.github.io");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.statusCode = 204; // No Content
+    res.end();
+    return;
+  }
+
   try {
     const { action, guildId, userId, type } = req.query;
 
