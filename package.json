@@ -18,6 +18,7 @@
   "homepage": "https://github.com/brahma-tech/brahmatech-backend#readme",
   "description": "",
   "dependencies": {
+    "firebase-admin": "^13.4.0",
     "node-fetch": "^2.7.0"
   }
 }
