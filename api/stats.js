@@ -1,6 +1,5 @@
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin only once
 if (!admin.apps.length) {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
   if (!privateKey) {
@@ -23,7 +22,7 @@ const db = admin.firestore();
 function send(res, status, data) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "https://brahma-tech.github.io"); // allow GitHub Pages
+  res.setHeader("Access-Control-Allow-Origin", "https://brahma-tech.github.io");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.end(JSON.stringify(data));
@@ -35,7 +34,7 @@ module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "https://brahma-tech.github.io");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.statusCode = 204; // No Content
+    res.statusCode = 204;
     res.end();
     return;
   }
@@ -43,7 +42,7 @@ module.exports = async (req, res) => {
   try {
     const { action, guildId, userId, type } = req.query;
 
-    // 1️⃣ User stats
+    // 1️⃣ User stats (merged with history)
     if (action === "user-stats") {
       if (!guildId || !userId)
         return send(res, 400, { error: "Missing guildId or userId" });
@@ -52,6 +51,12 @@ module.exports = async (req, res) => {
       if (!docSnap.exists) return send(res, 404, { error: "User not found" });
 
       const data = docSnap.data();
+
+      // Fetch XP + VC history for charts
+      const vcDoc = await db.collection("vc_stats").doc(`${guildId}_${userId}`).get();
+      const xpHistory = vcDoc.exists ? (vcDoc.data().xpHistory || {}) : {};
+      const vcHistory = vcDoc.exists ? (vcDoc.data().history || {}) : {};
+
       return send(res, 200, {
         xp: data.xp || 0,
         vcTime: data.vcTime || 0,
@@ -59,7 +64,9 @@ module.exports = async (req, res) => {
         streak: data.streak || 0,
         coins: data.coins || 0,
         badges: data.badges || [],
-        badgeProgress: data.badgeProgress || {}
+        badgeProgress: data.badgeProgress || {},
+        xpHistory,
+        vcHistory
       });
     }
 
@@ -89,7 +96,7 @@ module.exports = async (req, res) => {
       return send(res, 200, leaderboard.slice(0, 10));
     }
 
-    // 3️⃣ User history
+    // 3️⃣ User history (standalone)
     if (action === "user-history") {
       if (!guildId || !userId)
         return send(res, 400, { error: "Missing guildId or userId" });
@@ -104,7 +111,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Default: API usage help
+    // Default help
     send(res, 200, {
       message: "BrahmaTech Stats API",
       usage: [
